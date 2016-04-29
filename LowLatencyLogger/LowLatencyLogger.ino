@@ -18,6 +18,8 @@
 #include "RingBuffer.h"
 #include <IntervalTimer.h>
 
+#include <FlexCAN.h>
+
 #include <SPI.h>
 #include <SdFat.h>
 #include <SdFatUtil.h>
@@ -33,12 +35,17 @@ const int YGain = 6102; //LSB per milliG
 const uint16_t Zzero = 32803; //LSB per milliG
 const int ZGain = 6102; //LSB per milliG
 
+FlexCAN CANbus(500000);
+static CAN_message_t txCANmsg,rxCANmsg;
+int txCount,rxCount;
+unsigned int txTimer,rxTimer;
 
 IntervalTimer timer0, timer1, timer2; // timers
 
 RingBuffer *buffer0 = new RingBuffer; // buffers to store the values
 RingBuffer *buffer1 = new RingBuffer;
 RingBuffer *buffer2 = new RingBuffer;
+RingBuffer *bufferCAN = new RingBuffer;
 
 int startTimerValue0 = 0, startTimerValue1 = 0, startTimerValue2 = 0;
 
@@ -124,7 +131,8 @@ void printHeader(Print* pr) {
 const uint32_t FILE_BLOCK_COUNT = 2048000;
 
 // log file base name.  Must be six characters or less.
-#define FILE_BASE_NAME "data"
+#define FILE_BASE_NAME "highG"
+#define FILE_CAN_NAME "CAN"
 //------------------------------------------------------------------------------
 // Buffer definitions.
 //
@@ -162,10 +170,14 @@ const uint8_t BASE_NAME_SIZE = sizeof(FILE_BASE_NAME) - 1;
 boolean  recording = false;
 
 SdFat sd;
-
 SdBaseFile binFile;
 
+SdFat sdCAN;
+SdFile canFile;
+
+
 char binName[13] = FILE_BASE_NAME "00.bin";
+char canName[13] = FILE_CAN_NAME "00.bin";
 
 // Number of data records in a block.
 const uint16_t DATA_DIM = (512 - 4)/sizeof(data_t);
@@ -355,7 +367,7 @@ void dumpData() {
 uint32_t const ERASE_SIZE = 262144L;
 void logData() {
   uint32_t bgnBlock, endBlock;
-
+  sysTimer.reset();
   // Allocate extra buffer space.
   block_t block[BUFFER_BLOCK_COUNT];
   block_t* curBlock = 0;
@@ -481,6 +493,13 @@ void logData() {
       if (curBlock == 0) {
         overrun++;
       } else {
+     
+     //TODO
+        while ( CANbus.read(rxmsg) ) {
+      //hexDump( sizeof(rxmsg), (uint8_t *)&rxmsg );
+      Serial.write(rxmsg.buf[0]);
+      rxCount++;
+    }
         acquireData(&curBlock->data[curBlock->count++]);
         if (curBlock->count == DATA_DIM) {
           fullQueue[fullHead] = curBlock;
@@ -565,6 +584,8 @@ void setup(void) {
   recording = digitalRead(recordSwitchPin);
   digitalWrite(ERROR_LED_PIN,HIGH);
   
+  CANbus.begin();
+  
   Serial.begin(9600);
   delay(1000);
 
@@ -624,6 +645,7 @@ void setup(void) {
     adc->enableInterrupts(ADC_0);
 
     Serial.println("Timers started.");
+    
 }
 //------------------------------------------------------------------------------
 void loop(void) {
@@ -707,4 +729,7 @@ void adc0_isr() {
         // avoid a conversion started by this isr to repeat itself
         adc->adc0->adcWasInUse = false;
     }
+}
+
+void CAN_isr() {
 }
