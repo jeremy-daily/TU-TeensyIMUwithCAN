@@ -27,7 +27,6 @@
 
 
 
-
 IntervalTimer timer0, timer1, timer2; // timers
 
 RingBuffer *buffer0 = new RingBuffer; // buffers to store the values
@@ -49,6 +48,9 @@ const uint32_t LOG_INTERVAL_USEC = 250;
 //
 // SD chip select pin.
 const uint8_t SD_CS_PIN = 9;
+
+const uint8_t recordSwitchPin = 0;
+
 //
 // Digital pin to indicate an error, set to -1 if not used.
 // The led blinks for fatal errors. The led goes on solid for SD write
@@ -133,6 +135,8 @@ const uint8_t BUFFER_BLOCK_COUNT = 12;
 
 // Size of file base name.  Must not be larger than six.
 const uint8_t BASE_NAME_SIZE = sizeof(FILE_BASE_NAME) - 1;
+
+boolean  recording = false;
 
 SdFat sd;
 
@@ -420,7 +424,7 @@ void logData() {
   uint32_t logTime = micros()/LOG_INTERVAL_USEC + 1;
   logTime *= LOG_INTERVAL_USEC;
   bool closeFile = false;
-  while (1) {
+  while (recording) {
     // Time for next data record.
     logTime += LOG_INTERVAL_USEC;
     if (Serial.available()) {
@@ -530,6 +534,9 @@ void setup(void) {
   if (ERROR_LED_PIN >= 0) {
     pinMode(ERROR_LED_PIN, OUTPUT);
   }
+  pinMode(recordSwitchPin,INPUT_PULLUP);
+  recording = digitalRead(recordSwitchPin);
+  
   Serial.begin(9600);
   while (!Serial) {}
 
@@ -618,8 +625,12 @@ void loop(void) {
     dumpData();
   } else if (c == 'e') {
     checkOverrun();
+  } else if (recording) {
+    delay(30);
+    if (recording) logData();
   } else if (c == 'r') {
     logData();
+  
   } else {
     Serial.println(F("Invalid entry"));
   }
