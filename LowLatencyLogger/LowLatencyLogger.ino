@@ -25,6 +25,13 @@
 // User data functions.  Modify these functions for your data items.
 #include "UserDataType.h"
 
+//Calibration Data: Based on 1 G Tests and data sheet
+const uint16_t Xzero = 32770; //LSB per milliG
+const int XGain = 6102; //LSB per milliG
+const uint16_t Yzero = 32844; //LSB per milliG
+const int YGain = 6102; //LSB per milliG
+const uint16_t Zzero = 32803; //LSB per milliG
+const int ZGain = 6102; //LSB per milliG
 
 
 IntervalTimer timer0, timer1, timer2; // timers
@@ -35,14 +42,14 @@ RingBuffer *buffer2 = new RingBuffer;
 
 int startTimerValue0 = 0, startTimerValue1 = 0, startTimerValue2 = 0;
 
-
+char serialInput;
 
 
 //==============================================================================
 // Start of configuration constants.
 //==============================================================================
 //Interval between data records in microseconds.
-const uint32_t LOG_INTERVAL_USEC = 250;
+const uint32_t LOG_INTERVAL_USEC = 500;
 //------------------------------------------------------------------------------
 // Pin definitions.
 //
@@ -55,7 +62,7 @@ const uint8_t recordSwitchPin = 0;
 // Digital pin to indicate an error, set to -1 if not used.
 // The led blinks for fatal errors. The led goes on solid for SD write
 // overrun errors and logging continues.
-const int8_t ERROR_LED_PIN = -1;
+const int8_t ERROR_LED_PIN = 13;
 
 
 ADC *adc = new ADC(); // adc object
@@ -74,20 +81,36 @@ void acquireData(data_t* data) {
 // Print a data record.
 void printData(Print* pr, data_t* data) {
   pr->print(data->time);
-  for (int i = 0; i < ADC_DIM; i++) {
-    pr->write(',');
-    pr->print(data->adc[i]);
-  }
+  
+  pr->print(",");
+  pr->print((data->adc[0] - Xzero)*XGain);
+  pr->print(",");
+  pr->print((data->adc[1] - Yzero)*YGain);
+  pr->print(",");
+  pr->print((data->adc[2] - Zzero)*ZGain); 
   pr->println();
 }
 
 // Print data header.
 void printHeader(Print* pr) {
-  pr->print(F("time"));
-  for (int i = 0; i < ADC_DIM; i++) {
-    pr->print(F(",adc"));
-    pr->print(i);
-  }
+  pr->print("Time");
+  
+  pr->print(",");
+  pr->print("X Accel");
+  pr->print(",");
+  pr->print("Y Accel");
+  pr->print(",");
+  pr->print("Z Accel"); 
+  pr->println();
+  
+  pr->print("[microsec]");
+  
+  pr->print(",");
+  pr->print("[micro Gs]");
+  pr->print(",");
+  pr->print("[micro Gs]");
+  pr->print(",");
+  pr->print("[micro Gs]"); 
   pr->println();
 }
 
@@ -424,13 +447,16 @@ void logData() {
   uint32_t logTime = micros()/LOG_INTERVAL_USEC + 1;
   logTime *= LOG_INTERVAL_USEC;
   bool closeFile = false;
-  while (recording) {
+  while (1) {
     // Time for next data record.
     logTime += LOG_INTERVAL_USEC;
     if (Serial.available()) {
       closeFile = true;
     }
-
+    if (!digitalRead(recordSwitchPin))
+    {
+      closeFile = true;
+    }
     if (closeFile) {
       if (curBlock != 0 && curBlock->count >= 0) {
         // Put buffer in full queue.
@@ -527,6 +553,7 @@ void logData() {
   Serial.println((1000.0)*count/(t1-t0));
   Serial.print(F("Overruns: "));
   Serial.println(overrunTotal);
+  binaryToCsv();
   Serial.println(F("Done"));
 }
 //------------------------------------------------------------------------------
@@ -536,9 +563,10 @@ void setup(void) {
   }
   pinMode(recordSwitchPin,INPUT_PULLUP);
   recording = digitalRead(recordSwitchPin);
+  digitalWrite(ERROR_LED_PIN,HIGH);
   
   Serial.begin(9600);
-  while (!Serial) {}
+  delay(1000);
 
   Serial.print(F("FreeRam: "));
   Serial.println(FreeRam());
@@ -549,12 +577,12 @@ void setup(void) {
   }
   // initialize file system.
   if (!sd.begin(SD_CS_PIN, SPI_FULL_SPEED)) {
-    sd.initErrorPrint();
     fatalBlink();
+    sd.initErrorPrint();
+    
   }
   
-     delay(1000);
-
+   
     ///// ADC0 ////
     // reference can be ADC_REF_3V3, ADC_REF_1V2 (not for Teensy LC) or ADC_REF_EXT.
     //adc->setReference(ADC_REF_1V2, ADC_0); // change all 3.3 to 1.2 if you change the reference to 1V2
@@ -600,6 +628,7 @@ void setup(void) {
 //------------------------------------------------------------------------------
 void loop(void) {
   // discard any input
+  
   while (Serial.read() >= 0) {}
   Serial.println();
   Serial.println(F("type:"));
@@ -607,10 +636,15 @@ void loop(void) {
   Serial.println(F("d - dump data to Serial"));
   Serial.println(F("e - overrun error details"));
   Serial.println(F("r - record data"));
-
-  while(!Serial.available()) {}
-  char c = tolower(Serial.read());
-
+  
+  while(!Serial.available()) {
+      if (digitalRead(recordSwitchPin)) {
+        delay(30);
+        if (digitalRead(recordSwitchPin)) logData();
+      }
+  }
+  serialInput = tolower(Serial.read());
+  
   // Discard extra Serial data.
   do {
     delay(10);
@@ -619,16 +653,13 @@ void loop(void) {
   if (ERROR_LED_PIN >= 0) {
     digitalWrite(ERROR_LED_PIN, LOW);
   }
-  if (c == 'c') {
+  if (serialInput == 'c') {
     binaryToCsv();
-  } else if (c == 'd') {
+  } else if (serialInput == 'd') {
     dumpData();
-  } else if (c == 'e') {
+  } else if (serialInput == 'e') {
     checkOverrun();
-  } else if (recording) {
-    delay(30);
-    if (recording) logData();
-  } else if (c == 'r') {
+  } else  if (serialInput == 'r') {
     logData();
   
   } else {
