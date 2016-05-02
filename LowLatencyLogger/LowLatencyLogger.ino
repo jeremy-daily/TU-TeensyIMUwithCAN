@@ -49,12 +49,12 @@ char serialInput;
 // Start of configuration constants.
 //==============================================================================
 //Interval between data records in microseconds.
-const uint32_t LOG_INTERVAL_USEC = 500;
+const uint32_t LOG_INTERVAL_USEC = 500; //2000Hz
 //------------------------------------------------------------------------------
 // Pin definitions.
 //
 // SD chip select pin.
-const uint8_t SD_CS_PIN = 9;
+const uint8_t SD_CS_PIN = 10;
 
 const uint8_t recordSwitchPin = 0;
 
@@ -333,7 +333,7 @@ void dumpData() {
   binFile.rewind();
   Serial.println();
   Serial.println(F("Type any character to stop"));
-  delay(1000);
+  delay(100);
   printHeader(&Serial);
   while (!Serial.available() && binFile.read(&block , 512) == 512) {
     if (block.count == 0) {
@@ -362,11 +362,11 @@ void logData() {
   Serial.println();
 
   // Find unused file name.
-  if (BASE_NAME_SIZE > 6) {
+  if (BASE_NAME_SIZE > 5) {
     error("FILE_BASE_NAME too long");
   }
   while (sd.exists(binName)) {
-    if (binName[BASE_NAME_SIZE + 1] != '9') {
+   if (binName[BASE_NAME_SIZE + 1] != '9') {
       binName[BASE_NAME_SIZE + 1]++;
     } else {
       binName[BASE_NAME_SIZE + 1] = '0';
@@ -524,7 +524,8 @@ void logData() {
       bn++;
       if (bn == FILE_BLOCK_COUNT) {
         // File full so stop
-        break;
+        bn=0; //loop to beginning
+        //break;
       }
     }
   }
@@ -587,7 +588,7 @@ void setup(void) {
     // reference can be ADC_REF_3V3, ADC_REF_1V2 (not for Teensy LC) or ADC_REF_EXT.
     //adc->setReference(ADC_REF_1V2, ADC_0); // change all 3.3 to 1.2 if you change the reference to 1V2
 
-    adc->setAveraging(8); // set number of averages
+    adc->setAveraging(16); // set number of averages
     adc->setResolution(16); // set bits of resolution
 
     // it can be ADC_VERY_LOW_SPEED, ADC_LOW_SPEED, ADC_MED_SPEED, ADC_HIGH_SPEED_16BITS, ADC_HIGH_SPEED or ADC_VERY_HIGH_SPEED
