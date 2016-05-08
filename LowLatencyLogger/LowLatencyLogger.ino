@@ -22,8 +22,8 @@
 #include <FlexCAN.h>
 
 #include <i2c_t3.h>
-//#include <Adafruit_Sensor.h>
-//#include <Adafruit_BNO055.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BNO055.h>
 //#include <utility/imumaths.h>
 
 #include <SPI.h>
@@ -50,6 +50,7 @@ const int YGain = 6102; //LSB per milliG
 const uint16_t Zzero = 32803; //LSB per milliG
 const int ZGain = 6102; //LSB per milliG
 
+Adafruit_BNO055 bno = Adafruit_BNO055();
 
 IntervalTimer timer0, timer1, timer2, accelTimer; // timers
 
@@ -98,11 +99,14 @@ void acquireData(data_t* data) {
     data->adc[1] = uint16_t(buffer1->read());
     data->adc[2] = uint16_t(buffer2->read());
   }
+  memset(temp,0,26);
   if (Wire.available()>=26){
     
     for (uint8_t i = 0; i<26; i++){
      temp[i]=Wire.read();
     } 
+    
+  }
     //Serial.println("Received i2cData");
     
     data->rateGyro[0]=int16_t(temp[1] << 8 | temp[0]);
@@ -124,7 +128,7 @@ void acquireData(data_t* data) {
     data->accel[2]=int16_t(temp[25] << 8 | temp[24]);
    
     
-  }
+  
 }
 
 // Print a data record.
@@ -660,10 +664,19 @@ void setup(void) {
   
   Serial.begin(9600);
    delay(500);
-  Wire.begin();
   
   delay(500);
-  Wire.setRate(I2C_RATE_400); 
+  
+   /* Initialise the sensor */
+  if(!bno.begin())
+  {
+    /* There was a problem detecting the BNO055 ... check your connections */
+    Serial.print("Ooops, no BNO055 detected ... Check your wiring or I2C ADDR!");
+    while(1);
+  }
+Wire.setRate(I2C_RATE_400); 
+ 
+
   
   Serial.print(F("FreeRam: "));
   Serial.println(FreeRam());
@@ -684,7 +697,7 @@ void setup(void) {
     // reference can be ADC_REF_3V3, ADC_REF_1V2 (not for Teensy LC) or ADC_REF_EXT.
     //adc->setReference(ADC_REF_1V2, ADC_0); // change all 3.3 to 1.2 if you change the reference to 1V2
 
-    adc->setAveraging(16); // set number of averages
+    adc->setAveraging(128); // set number of averages
     adc->setResolution(16); // set bits of resolution
 
     // it can be ADC_VERY_LOW_SPEED, ADC_LOW_SPEED, ADC_MED_SPEED, ADC_HIGH_SPEED_16BITS, ADC_HIGH_SPEED or ADC_VERY_HIGH_SPEED
@@ -814,3 +827,5 @@ void adc0_isr() {
         adc->adc0->adcWasInUse = false;
     }
 }
+
+
