@@ -1,3 +1,4 @@
+
 /**
  * This program logs data to a binary file.  Functions are included
  * to convert the binary file to a csv text file.
@@ -18,12 +19,28 @@
 #include "RingBuffer.h"
 #include <IntervalTimer.h>
 
+#include <FlexCAN.h>
+
+#include <i2c_t3.h>
+//#include <Adafruit_Sensor.h>
+//#include <Adafruit_BNO055.h>
+//#include <utility/imumaths.h>
+
 #include <SPI.h>
 #include <SdFat.h>
 #include <SdFatUtil.h>
 //------------------------------------------------------------------------------
 // User data functions.  Modify these functions for your data items.
 #include "UserDataType.h"
+
+#define PS0Pin 2
+#define resetPin 22
+#define IMUIntPin 6
+#define STPin 17
+
+FlexCAN CANbus(500000); //Change this to 250000 for J1939
+static CAN_message_t txCANmsg,rxCANmsg;
+
 
 //Calibration Data: Based on 1 G Tests and data sheet
 const uint16_t Xzero = 32770; //LSB per milliG
@@ -34,22 +51,23 @@ const uint16_t Zzero = 32803; //LSB per milliG
 const int ZGain = 6102; //LSB per milliG
 
 
-IntervalTimer timer0, timer1, timer2; // timers
+IntervalTimer timer0, timer1, timer2, accelTimer; // timers
 
 RingBuffer *buffer0 = new RingBuffer; // buffers to store the values
 RingBuffer *buffer1 = new RingBuffer;
 RingBuffer *buffer2 = new RingBuffer;
 
-int startTimerValue0 = 0, startTimerValue1 = 0, startTimerValue2 = 0;
-
+int startTimerValue0 = 0, startTimerValue1 = 0, startTimerValue2 = 0, startTimerValue3 = 0;
+uint8_t temp[26];
 char serialInput;
 
+const byte BNOaddress = 0x28;
 
 //==============================================================================
 // Start of configuration constants.
 //==============================================================================
 //Interval between data records in microseconds.
-const uint32_t LOG_INTERVAL_USEC = 500; //2000Hz
+const uint32_t LOG_INTERVAL_USEC = 1000; //2000Hz
 //------------------------------------------------------------------------------
 // Pin definitions.
 //
@@ -57,6 +75,11 @@ const uint32_t LOG_INTERVAL_USEC = 500; //2000Hz
 const uint8_t SD_CS_PIN = 10;
 
 const uint8_t recordSwitchPin = 0;
+
+
+uint32_t txCount,rxCount;
+uint32_t txTimer,rxTimer;
+
 
 //
 // Digital pin to indicate an error, set to -1 if not used.
@@ -67,7 +90,6 @@ const int8_t ERROR_LED_PIN = 13;
 
 ADC *adc = new ADC(); // adc object
 
-
 // Acquire a data record.
 void acquireData(data_t* data) {
   if(!buffer2->isEmpty() && !buffer1->isEmpty() && !buffer0->isEmpty() ) {
@@ -75,6 +97,33 @@ void acquireData(data_t* data) {
     data->adc[0] = uint16_t(buffer0->read());
     data->adc[1] = uint16_t(buffer1->read());
     data->adc[2] = uint16_t(buffer2->read());
+  }
+  if (Wire.available()>=26){
+    
+    for (uint8_t i = 0; i<26; i++){
+     temp[i]=Wire.read();
+    } 
+    //Serial.println("Received i2cData");
+    
+    data->rateGyro[0]=int16_t(temp[1] << 8 | temp[0]);
+    data->rateGyro[1]=int16_t(temp[3] << 8 | temp[2]);
+    data->rateGyro[2]=int16_t(temp[5] << 8 | temp[4]);
+  
+  
+    data->euler[0]=int16_t(temp[7] << 8 | temp[6]);
+    data->euler[1]=int16_t(temp[9] << 8 | temp[8]);
+    data->euler[2]=int16_t(temp[11] << 8 | temp[10]);
+    
+    data->quat[0]=int16_t(temp[13] << 8 | temp[12]);
+    data->quat[1]=int16_t(temp[15] << 8 | temp[14]);
+    data->quat[2]=int16_t(temp[17] << 8 | temp[16]);
+    data->quat[3]=int16_t(temp[19] << 8 | temp[18]);
+   
+    data->accel[0]=int16_t(temp[21] << 8 | temp[20]);
+    data->accel[1]=int16_t(temp[23] << 8 | temp[22]);
+    data->accel[2]=int16_t(temp[25] << 8 | temp[24]);
+   
+    
   }
 }
 
@@ -88,6 +137,38 @@ void printData(Print* pr, data_t* data) {
   pr->print((data->adc[1] - Yzero)*YGain);
   pr->print(",");
   pr->print((data->adc[2] - Zzero)*ZGain); 
+  
+  pr->print(",");
+  pr->print((data->accel[0]));
+  pr->print(",");
+  pr->print((data->accel[1]));
+  pr->print(",");
+  pr->print((data->accel[2]));
+  
+  pr->print(",");
+  pr->print((data->rateGyro[0]));
+  pr->print(",");
+  pr->print((data->rateGyro[1]));
+  pr->print(",");
+  pr->print((data->rateGyro[2]));
+  
+  pr->print(",");
+  pr->print((data->euler[0]));
+  pr->print(",");
+  pr->print((data->euler[1]));
+  pr->print(",");
+  pr->print((data->euler[2]));
+  
+  pr->print(",");
+  pr->print((data->quat[0]));
+  pr->print(",");
+  pr->print((data->quat[1]));
+  pr->print(",");
+  pr->print((data->quat[2]));
+  pr->print(",");
+  pr->print((data->quat[3]));
+ 
+  
   pr->println();
 }
 
@@ -559,6 +640,17 @@ void logData() {
 }
 //------------------------------------------------------------------------------
 void setup(void) {
+  
+  pinMode(PS0Pin,OUTPUT);
+  digitalWrite(PS0Pin,LOW);
+  pinMode(resetPin,OUTPUT);
+  digitalWrite(resetPin,HIGH);
+  pinMode(STPin,OUTPUT);
+  digitalWrite(STPin,LOW);
+  
+  pinMode(IMUIntPin,INPUT);
+  digitalWrite(resetPin,HIGH);
+  
   if (ERROR_LED_PIN >= 0) {
     pinMode(ERROR_LED_PIN, OUTPUT);
   }
@@ -567,8 +659,12 @@ void setup(void) {
   digitalWrite(ERROR_LED_PIN,HIGH);
   
   Serial.begin(9600);
-  delay(1000);
-
+   delay(500);
+  Wire.begin();
+  
+  delay(500);
+  Wire.setRate(I2C_RATE_400); 
+  
   Serial.print(F("FreeRam: "));
   Serial.println(FreeRam());
   Serial.print(F("Records/block: "));
@@ -621,6 +717,8 @@ void setup(void) {
     startTimerValue1 = timer1.begin(timer1_callback, LOG_INTERVAL_USEC);
     delayMicroseconds(50); 
     startTimerValue2 = timer2.begin(timer2_callback, LOG_INTERVAL_USEC);
+    delayMicroseconds(50); 
+    startTimerValue3 = accelTimer.begin(timer3_callback, 10000);
     
     adc->enableInterrupts(ADC_0);
 
@@ -679,6 +777,13 @@ void timer1_callback(void) {
 }
 void timer2_callback(void) {
      adc->startSingleRead(readPins[2], ADC_0);
+}
+
+void timer3_callback(void) {
+    Wire.beginTransmission(BNOaddress);         // slave addr
+    Wire.write(0x14);                       // memory address
+    Wire.endTransmission(I2C_NOSTOP);       // blocking Tx, no STOP
+    Wire.sendRequest(BNOaddress, 26, I2C_STOP);
 }
 
 // when the measurement finishes, this will be called
