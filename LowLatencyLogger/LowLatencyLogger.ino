@@ -41,7 +41,7 @@
 uint8_t timeBytes[4];
     
 
-FlexCAN CANbus(500000); //Change this to 250000 for J1939
+//FlexCAN CANbus(500000); //Change this to 250000 for J1939
 static CAN_message_t txCANmsg,rxCANmsg;
 
 const int canTXID = 0x5;
@@ -63,7 +63,7 @@ RingBuffer *buffer1 = new RingBuffer;
 RingBuffer *buffer2 = new RingBuffer;
 
 int startTimerValue0 = 0, startTimerValue1 = 0, startTimerValue2 = 0, startTimerValue3 = 0;
-uint8_t temp[128];
+uint8_t temp[26];
 char serialInput;
 
 uint8_t mac[6];
@@ -111,39 +111,48 @@ void acquireData(data_t* data) {
     data->adc[1] = uint16_t(buffer1->read());
     data->adc[2] = uint16_t(buffer2->read());
   
-  memset(temp,0,26);
-  if (Wire.available()>=26){
-    Serial.println(Wire.available());
-    //for (uint8_t i = 0; i<26; i++){
-    // temp[i]=Wire.read();
-    //}
-    int i=0;
-    while (Wire.available() ){
-      temp[i]=Wire.read();
-      i++;
+//  memset(temp,0,26);
+  
+    if (Wire.available()==26){
+      //Serial.println(Wire.available());
+      for (uint8_t i = 0; i<26; i++){
+       temp[i]=Wire.read();
+      }
     }
+    else
+    {
+      for (uint8_t i = 0; i<26; i++){
+        temp[i]=0;
+        //Wire.read();
+      }
+    }
+//    int i=0;
+//    while (Wire.available() ){
+//      temp[i]=Wire.read();
+//      i++;
+  //  }
   // Serial.println("Received i2cData"); 
      
-  }
+  
     
     
-    data->rateGyro[0]=int16_t(temp[1] << 8 | temp[0]);
-    data->rateGyro[1]=int16_t(temp[3] << 8 | temp[2]);
-    data->rateGyro[2]=int16_t(temp[5] << 8 | temp[4]);
+    data->rateGyro[0]=int16_t(temp[1]) << 8 | temp[0];
+    data->rateGyro[1]=int16_t(temp[3]) << 8 | temp[2];
+    data->rateGyro[2]=int16_t(temp[5]) << 8 | temp[4];
   
   
-    data->euler[0]=int16_t(temp[7] << 8 | temp[6]);
-    data->euler[1]=int16_t(temp[9] << 8 | temp[8]);
-    data->euler[2]=int16_t(temp[11] << 8 | temp[10]);
+    data->euler[0]=int16_t(temp[7]) << 8 | temp[6];
+    data->euler[1]=int16_t(temp[9]) << 8 | temp[8];
+    data->euler[2]=int16_t(temp[11]) << 8 | temp[10];
     
-    data->quat[0]=int16_t(temp[13] << 8 | temp[12]);
-    data->quat[1]=int16_t(temp[15] << 8 | temp[14]);
-    data->quat[2]=int16_t(temp[17] << 8 | temp[16]);
-    data->quat[3]=int16_t(temp[19] << 8 | temp[18]);
+    data->quat[0]=int16_t(temp[13]) << 8 | temp[12];
+    data->quat[1]=int16_t(temp[15]) << 8 | temp[14];
+    data->quat[2]=int16_t(temp[17]) << 8 | temp[16];
+    data->quat[3]=int16_t(temp[19]) << 8 | temp[18];
    
-    data->accel[0]=int16_t(temp[21] << 8 | temp[20]);
-    data->accel[1]=int16_t(temp[23] << 8 | temp[22]);
-    data->accel[2]=int16_t(temp[25] << 8 | temp[24]);
+    data->accel[0]=int16_t(temp[21]) << 8 | temp[20];
+    data->accel[1]=int16_t(temp[23]) << 8 | temp[22];
+    data->accel[2]=int16_t(temp[25]) << 8 | temp[24];
    
   }
   
@@ -748,7 +757,7 @@ void setup(void) {
   digitalWrite(ERROR_LED_PIN,HIGH);
   
   Serial.begin(9600);
-   delay(500);
+   delay(1000);
   
   
    /* Initialise the sensor */
@@ -792,7 +801,7 @@ void setup(void) {
     // reference can be ADC_REF_3V3, ADC_REF_1V2 (not for Teensy LC) or ADC_REF_EXT.
     //adc->setReference(ADC_REF_1V2, ADC_0); // change all 3.3 to 1.2 if you change the reference to 1V2
 
-    adc->setAveraging(128); // set number of averages
+    adc->setAveraging(16); // set number of averages
     adc->setResolution(16); // set bits of resolution
 
     // it can be ADC_VERY_LOW_SPEED, ADC_LOW_SPEED, ADC_MED_SPEED, ADC_HIGH_SPEED_16BITS, ADC_HIGH_SPEED or ADC_VERY_HIGH_SPEED
@@ -803,7 +812,6 @@ void setup(void) {
     // with 16 averages, 12 bits resolution and ADC_HIGH_SPEED conversion and sampling it takes about 32.5 us for a conversion
     
     Serial.println("Starting Timers");
-   startTimerValue3 = accelTimer.begin(timer3_callback, 10000);
    
     // start the timers, if it's not possible, startTimerValuex will be false
     startTimerValue0 = timer0.begin(timer0_callback, LOG_INTERVAL_USEC);
@@ -827,6 +835,7 @@ void setup(void) {
     delayMicroseconds(50); 
     startTimerValue2 = timer2.begin(timer2_callback, LOG_INTERVAL_USEC);
     delayMicroseconds(50); 
+    startTimerValue3 = accelTimer.begin(timer3_callback, 10000);
     
     adc->enableInterrupts(ADC_0);
 
@@ -834,8 +843,9 @@ void setup(void) {
     
     txCANmsg.id = canTXID;
    
-    Wire.flush();
-    while (Wire.available()>0) Wire.read();
+//    Wire.flush();
+//    while (Wire.available()>0) Wire.read();
+//    delay(200);
 }
 //------------------------------------------------------------------------------
 void loop(void) {
@@ -893,20 +903,20 @@ void timer2_callback(void) {
 }
 
 void timer3_callback(void) {
-    uint32_t currentMicros = micros();
-    
-    txCANmsg.buf[0] = uint8_t(currentMicros & 0xFF000000 >> 24);
-    txCANmsg.buf[1] = uint8_t(currentMicros & 0x00FF0000 >> 16);
-    txCANmsg.buf[2] = uint8_t(currentMicros & 0x0000FF00 >>  8);
-    txCANmsg.buf[3] = uint8_t(currentMicros & 0x000000FF);
-    
-    CANbus.write(txCANmsg);
+//    uint32_t currentMicros = micros();
+//    
+//    txCANmsg.buf[0] = uint8_t(currentMicros & 0xFF000000 >> 24);
+//    txCANmsg.buf[1] = uint8_t(currentMicros & 0x00FF0000 >> 16);
+//    txCANmsg.buf[2] = uint8_t(currentMicros & 0x0000FF00 >>  8);
+//    txCANmsg.buf[3] = uint8_t(currentMicros & 0x000000FF);
+//    
+//    CANbus.write(txCANmsg);
     //Serial.println(currentMicros);
     
     Wire.beginTransmission(BNOaddress);         // slave addr
     Wire.write(0x14);                       // memory address
-    Wire.endTransmission(I2C_STOP);       // blocking Tx, no STOP
-    Wire.sendRequest(BNOaddress, 32, I2C_STOP);
+    Wire.endTransmission(I2C_NOSTOP);       // blocking Tx, no STOP
+    Wire.sendRequest(BNOaddress, 26, I2C_STOP);
 
     
 }
