@@ -41,7 +41,7 @@
 uint8_t timeBytes[4];
     
 
-//FlexCAN CANbus(500000); //Change this to 250000 for J1939
+FlexCAN CANbus(500000); //Change this to 250000 for J1939
 static CAN_message_t txCANmsg,rxCANmsg;
 
 const int canTXID = 0x5;
@@ -903,14 +903,14 @@ void timer2_callback(void) {
 }
 
 void timer3_callback(void) {
-//    uint32_t currentMicros = micros();
-//    
-//    txCANmsg.buf[0] = uint8_t(currentMicros & 0xFF000000 >> 24);
-//    txCANmsg.buf[1] = uint8_t(currentMicros & 0x00FF0000 >> 16);
-//    txCANmsg.buf[2] = uint8_t(currentMicros & 0x0000FF00 >>  8);
-//    txCANmsg.buf[3] = uint8_t(currentMicros & 0x000000FF);
-//    
-//    CANbus.write(txCANmsg);
+    uint32_t currentMicros = micros();
+    
+    txCANmsg.buf[0] = uint8_t(currentMicros & 0xFF000000 >> 24);
+    txCANmsg.buf[1] = uint8_t(currentMicros & 0x00FF0000 >> 16);
+    txCANmsg.buf[2] = uint8_t(currentMicros & 0x0000FF00 >>  8);
+    txCANmsg.buf[3] = uint8_t(currentMicros & 0x000000FF);
+    
+    CANbus.write(txCANmsg);
     //Serial.println(currentMicros);
     
     Wire.beginTransmission(BNOaddress);         // slave addr
