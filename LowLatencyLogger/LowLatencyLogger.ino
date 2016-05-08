@@ -38,17 +38,21 @@
 #define IMUIntPin 6
 #define STPin 17
 
+uint8_t timeBytes[4];
+    
+
 FlexCAN CANbus(500000); //Change this to 250000 for J1939
 static CAN_message_t txCANmsg,rxCANmsg;
 
+const int canTXID = 0x5;
 
 //Calibration Data: Based on 1 G Tests and data sheet
 const uint16_t Xzero = 32770; //LSB per milliG
-const int XGain = 6102; //LSB per milliG
+const uint16_t XGain = 6102; //LSB per milliG
 const uint16_t Yzero = 32844; //LSB per milliG
-const int YGain = 6102; //LSB per milliG
+const uint16_t YGain = 6102; //LSB per milliG
 const uint16_t Zzero = 32803; //LSB per milliG
-const int ZGain = 6102; //LSB per milliG
+const uint16_t ZGain = 6102; //LSB per milliG
 
 Adafruit_BNO055 bno = Adafruit_BNO055();
 
@@ -59,8 +63,10 @@ RingBuffer *buffer1 = new RingBuffer;
 RingBuffer *buffer2 = new RingBuffer;
 
 int startTimerValue0 = 0, startTimerValue1 = 0, startTimerValue2 = 0, startTimerValue3 = 0;
-uint8_t temp[26];
+uint8_t temp[128];
 char serialInput;
+
+uint8_t mac[6];
 
 const byte BNOaddress = 0x28;
 
@@ -95,19 +101,31 @@ ADC *adc = new ADC(); // adc object
 void acquireData(data_t* data) {
   if(!buffer2->isEmpty() && !buffer1->isEmpty() && !buffer0->isEmpty() ) {
     data->time = micros();
+    
+//    txCANmsg.buf[0] = uint8_t(data->time & 0xFF000000 >> 24);
+//    txCANmsg.buf[1] = uint8_t(data->time & 0x00FF0000 >> 16);
+//    txCANmsg.buf[2] = uint8_t(data->time & 0x0000FF00 >>  8);
+//    txCANmsg.buf[3] = uint8_t(data->time & 0x000000FF);
+//    
     data->adc[0] = uint16_t(buffer0->read());
     data->adc[1] = uint16_t(buffer1->read());
     data->adc[2] = uint16_t(buffer2->read());
-  }
+  
   memset(temp,0,26);
   if (Wire.available()>=26){
-    
-    for (uint8_t i = 0; i<26; i++){
-     temp[i]=Wire.read();
-    } 
-    
+    Serial.println(Wire.available());
+    //for (uint8_t i = 0; i<26; i++){
+    // temp[i]=Wire.read();
+    //}
+    int i=0;
+    while (Wire.available() ){
+      temp[i]=Wire.read();
+      i++;
+    }
+  // Serial.println("Received i2cData"); 
+     
   }
-    //Serial.println("Received i2cData");
+    
     
     data->rateGyro[0]=int16_t(temp[1] << 8 | temp[0]);
     data->rateGyro[1]=int16_t(temp[3] << 8 | temp[2]);
@@ -127,12 +145,13 @@ void acquireData(data_t* data) {
     data->accel[1]=int16_t(temp[23] << 8 | temp[22]);
     data->accel[2]=int16_t(temp[25] << 8 | temp[24]);
    
-    
+  }
   
 }
 
 // Print a data record.
 void printData(Print* pr, data_t* data) {
+  
   pr->print(data->time);
   
   pr->print(",");
@@ -181,21 +200,85 @@ void printHeader(Print* pr) {
   pr->print("Time");
   
   pr->print(",");
-  pr->print("X Accel");
+  pr->print("X High Accel");
   pr->print(",");
-  pr->print("Y Accel");
+  pr->print("Y High Accel");
   pr->print(",");
-  pr->print("Z Accel"); 
+  pr->print("Z High Accel"); 
+  
+  pr->print(",");
+  pr->print("X Low Accel");
+  pr->print(",");
+  pr->print("Y Low Accel");
+  pr->print(",");
+  pr->print("Z Low Accel"); 
+  
+  pr->print(",");
+  pr->print("Roll Rate");
+  pr->print(",");
+  pr->print("Pitch Rate");
+  pr->print(",");
+  pr->print("Yaw Rate"); 
+ 
+  pr->print(",");
+  pr->print("Roll Angle");
+  pr->print(",");
+  pr->print("Pitch Angle");
+  pr->print(",");
+  pr->print("Yaw Angle"); 
+  
+  pr->print(",");
+  pr->print("Quatonion w");
+  pr->print(",");
+  pr->print("Quatonion x");
+  pr->print(",");
+  pr->print("Quatonion y");
+  pr->print(",");
+  pr->print("Quatonion z");
+ 
+ 
   pr->println();
   
   pr->print("[microsec]");
   
   pr->print(",");
-  pr->print("[micro Gs]");
+  pr->print("[milli Gs]");
   pr->print(",");
-  pr->print("[micro Gs]");
+  pr->print("[milli Gs]");
   pr->print(",");
-  pr->print("[micro Gs]"); 
+  pr->print("[milli Gs]");
+ 
+  pr->print(",");
+  pr->print("[milli Gs]");
+  pr->print(",");
+  pr->print("[milli Gs]");
+  pr->print(",");
+  pr->print("[milli Gs]");
+ 
+  pr->print(",");
+  pr->print("[deg/sec]");
+  pr->print(",");
+  pr->print("[deg/sec]");
+  pr->print(",");
+  pr->print("[deg/sec]"); 
+  
+  pr->print(",");
+  pr->print("[deg]");
+  pr->print(",");
+  pr->print("[deg]");
+  pr->print(",");
+  pr->print("[deg]"); 
+  
+  pr->print(",");
+  pr->print("[unitless]");
+  pr->print(",");
+  pr->print("[unitless]");
+  pr->print(",");
+  pr->print("[unitless]"); 
+  pr->print(",");
+  pr->print("[unitless]"); 
+  
+  
   pr->println();
 }
 
@@ -243,7 +326,9 @@ const uint8_t BUFFER_BLOCK_COUNT = 12;
 
 // Size of file base name.  Must not be larger than six.
 const uint8_t BASE_NAME_SIZE = sizeof(FILE_BASE_NAME) - 1;
-
+sensor_t sensor;
+  
+  
 boolean  recording = false;
 
 SdFat sd;
@@ -665,7 +750,6 @@ void setup(void) {
   Serial.begin(9600);
    delay(500);
   
-  delay(500);
   
    /* Initialise the sensor */
   if(!bno.begin())
@@ -674,9 +758,20 @@ void setup(void) {
     Serial.print("Ooops, no BNO055 detected ... Check your wiring or I2C ADDR!");
     while(1);
   }
-Wire.setRate(I2C_RATE_400); 
- 
+  Wire.setRate(I2C_RATE_400); 
+  delay(500);
+  
+ // bno.getSensor(&sensor);
 
+  Serial.print  ("Unique ID: "); 
+  
+  read_mac();
+  Serial.println();
+  
+  txCANmsg.buf[4] = mac[3];
+  txCANmsg.buf[5] = mac[2];
+  txCANmsg.buf[6] = mac[1];
+  txCANmsg.buf[7] = mac[0];
   
   Serial.print(F("FreeRam: "));
   Serial.println(FreeRam());
@@ -708,7 +803,8 @@ Wire.setRate(I2C_RATE_400);
     // with 16 averages, 12 bits resolution and ADC_HIGH_SPEED conversion and sampling it takes about 32.5 us for a conversion
     
     Serial.println("Starting Timers");
-
+   startTimerValue3 = accelTimer.begin(timer3_callback, 10000);
+   
     // start the timers, if it's not possible, startTimerValuex will be false
     startTimerValue0 = timer0.begin(timer0_callback, LOG_INTERVAL_USEC);
     // wait enough time for the first timer conversion to finish (depends on resolution and averaging),
@@ -731,11 +827,15 @@ Wire.setRate(I2C_RATE_400);
     delayMicroseconds(50); 
     startTimerValue2 = timer2.begin(timer2_callback, LOG_INTERVAL_USEC);
     delayMicroseconds(50); 
-    startTimerValue3 = accelTimer.begin(timer3_callback, 10000);
     
     adc->enableInterrupts(ADC_0);
 
     Serial.println("Timers started.");
+    
+    txCANmsg.id = canTXID;
+   
+    Wire.flush();
+    while (Wire.available()>0) Wire.read();
 }
 //------------------------------------------------------------------------------
 void loop(void) {
@@ -793,10 +893,22 @@ void timer2_callback(void) {
 }
 
 void timer3_callback(void) {
+    uint32_t currentMicros = micros();
+    
+    txCANmsg.buf[0] = uint8_t(currentMicros & 0xFF000000 >> 24);
+    txCANmsg.buf[1] = uint8_t(currentMicros & 0x00FF0000 >> 16);
+    txCANmsg.buf[2] = uint8_t(currentMicros & 0x0000FF00 >>  8);
+    txCANmsg.buf[3] = uint8_t(currentMicros & 0x000000FF);
+    
+    CANbus.write(txCANmsg);
+    //Serial.println(currentMicros);
+    
     Wire.beginTransmission(BNOaddress);         // slave addr
     Wire.write(0x14);                       // memory address
-    Wire.endTransmission(I2C_NOSTOP);       // blocking Tx, no STOP
-    Wire.sendRequest(BNOaddress, 26, I2C_STOP);
+    Wire.endTransmission(I2C_STOP);       // blocking Tx, no STOP
+    Wire.sendRequest(BNOaddress, 32, I2C_STOP);
+
+    
 }
 
 // when the measurement finishes, this will be called
@@ -828,4 +940,26 @@ void adc0_isr() {
     }
 }
 
+void read(uint8_t word, uint8_t *mac, uint8_t offset) {
+  FTFL_FCCOB0 = 0x41;             // Selects the READONCE command
+  FTFL_FCCOB1 = word;             // read the given word of read once area
 
+  // launch command and wait until complete
+  FTFL_FSTAT = FTFL_FSTAT_CCIF;
+  while(!(FTFL_FSTAT & FTFL_FSTAT_CCIF));
+
+  *(mac+offset) =   FTFL_FCCOB5;       // collect only the top three bytes,
+  *(mac+offset+1) = FTFL_FCCOB6;       // in the right orientation (big endian).
+  *(mac+offset+2) = FTFL_FCCOB7;       // Skip FTFL_FCCOB4 as it's always 0.
+}
+
+void read_mac() {
+  read(0xe,mac,0);
+  read(0xf,mac,3);
+  size_t count = 0;
+  for(uint8_t i = 0; i < 6; ++i) {
+    if (i!=0) count += Serial.print(":");
+    count += Serial.print((*(mac+i) & 0xF0) >> 4, 16);
+    count += Serial.print(*(mac+i) & 0x0F, 16);
+  }
+}
