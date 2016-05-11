@@ -12,5 +12,3 @@ struct data_t {
 const uint8_t readPins[ADC_DIM] = {14,15,16};
 
 #endif  // UserDataType_h
-
-
