@@ -193,6 +193,18 @@ const double AccelXOffset = 0.298012168 ;
 #define REMAP_SIGN_P6                                    0x07
 #define REMAP_SIGN_P7                                    0x05
 
+PROGMEM char SytemErrorCode[11][56] ={"No Error",
+  "Peripheral initialization error",
+  "System initialization error",
+  "Self test result failed",
+  "Register map value out of range",
+  "Register map address out of range",
+  "Register map write error",
+  "BNO low power mode not available for selected operation",
+  "Accelerometer Power mode not available",
+  "Fusion algorithm configuration error",
+  "Sensor configuration error"};
+  
 double yawRate = 0.0;
 double yawAngle = 0.0;
  
@@ -245,6 +257,31 @@ double BNOgetAccelX(){
   
 }
 
+uint8_t getBNOSystemStatus(){
+    uint8_t system_status    = BNOread(BNO055_SYS_STAT_ADDR);
+    char statusMessage[40];
+    sprintf(statusMessage,"System Status: 0x%02X ",system_status);
+    Serial.print(statusMessage);
+    if      (system_status == 0) Serial.println("System Idle");
+    else if (system_status == 1) Serial.println("System Error");
+    else if (system_status == 2) Serial.println("Initilaising peripherals");
+    else if (system_status == 3) Serial.println("System Initialization");
+    else if (system_status == 4) Serial.println("Executing Self Test");
+    else if (system_status == 5) Serial.println("Sensor Fusion Algorithm Running");
+    else if (system_status == 6) Serial.println("System running without fusion algorithm");
+    else Serial.println(" There seems to be a problem reading the system status.");
+          
+    if (system_status == 1){
+      uint8_t system_error     = BNOread(BNO055_SYS_ERR_ADDR);
+      sprintf(statusMessage,"System Error: 0x%02X ",system_error);
+      Serial.print(statusMessage);
+      Serial.println(SytemErrorCode[system_error]);
+      //if (system_error == 0) Serial.println(" All systems passed the Self Test");
+      //else Serial.println(" There seems to be a problem with the self test.");
+    }
+  return system_status;
+}  
+
 uint8_t getBNO055Status(void)
 {
     /* Get the system status values (mostly for debugging purposes) */
@@ -283,31 +320,15 @@ uint8_t getBNO055Status(void)
     if (self_test_result == 0xf) Serial.println(" All systems passed the Self Test");
     else Serial.println(" There seems to be a problem.");
 
-    uint8_t system_status    = BNOread(BNO055_SYS_STAT_ADDR);
-    sprintf(statusMessage,"System Status: 0x%02X ",system_status);
-    Serial.print(statusMessage);
-    if      (system_status == 0) Serial.println("System Idle");
-    else if (system_status == 1) Serial.println("System Error");
-    else if (system_status == 2) Serial.println("Initilaising peripherals");
-    else if (system_status == 3) Serial.println("System Initialization");
-    else if (system_status == 4) Serial.println("Executing Self Test");
-    else if (system_status == 5) Serial.println("Sensor Fusion Algorithm Running");
-    else if (system_status == 6) Serial.println("System running without fusion algorithm");
-    else Serial.println(" There seems to be a problem.");
+    
          
     
-    if (system_status == 1){
-      uint8_t system_error     = BNOread(BNO055_SYS_ERR_ADDR);
-      sprintf(statusMessage,"System Error: 0x%02X ",system_error);
-      Serial.print(statusMessage);
-      if (system_error == 0) Serial.println(" All systems passed the Self Test");
-      else Serial.println(" There seems to be a problem with system status.");
-    }
+ 
 
     uint8_t unit_selected    = BNOread(BNO055_UNIT_SEL_ADDR);
     sprintf(statusMessage,"Unit Select: 0x%02X ",unit_selected);
     Serial.println(statusMessage);
-    if (unit_selected & 1 == 0) Serial.println("Accelerations are in m/s/s.");
+    if ((unit_selected & 1) == 0) Serial.println("Accelerations are in m/s/s.");
     else Serial.println("Accelerations are in milli g.");
     if ((unit_selected & 2) >> 1 == 0) Serial.println("Rate Gyro is in Degrees/Second.");
     else Serial.println("Rate Gyro in Radians/Second.");
@@ -402,5 +423,6 @@ uint8_t getBNO055Status(void)
     if      ((calibraton_status & 0b00000011) == 0) Serial.println("Not Calibrated.");
     else if ((calibraton_status & 0b00000011) == 3) Serial.println("Fully Calibrated.");
     else Serial.println("Something in the middle.");
-    return gyro_config;
+    
+    return operation_mode;
 }
